@@ -169,7 +169,6 @@ class EmbeddingNet(nn.Module):
             raise ValueError("Only resnet50 supported")
         self.projection = nn.Sequential(
             nn.Linear(in_features, embed_dim),
-            nn.BatchNorm1d(embed_dim),
             nn.ReLU(),
             nn.Linear(embed_dim, embed_dim)
         )
@@ -451,6 +450,7 @@ def main():
             if recall1 > best_recall:
                 best_recall = recall1
                 torch.save(model.state_dict(), os.path.join(args.output_dir, 'models', f'{exp}_best.pth'))
+                torch.save(model.state_dict(), "/content/drive/MyDrive/Bilal Bushra_MSDS25051/model.pth") 
                 print(f"Best model saved with Recall@1 = {best_recall:.4f}")
 
         # After training, final evaluation with best model
