@@ -161,16 +161,20 @@ class TripletDataset(Dataset):
 class EmbeddingNet(nn.Module):
     def __init__(self, backbone='resnet50', embed_dim=256):
         super().__init__()
+
         if backbone == 'resnet50':
             self.backbone = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
             in_features = self.backbone.fc.in_features
             self.backbone.fc = nn.Identity()
         else:
             raise ValueError("Only resnet50 supported")
+
         self.projection = nn.Sequential(
-            nn.Linear(in_features, embed_dim),
+            nn.Linear(in_features, 512),
+            nn.LayerNorm(512),
+            nn.Dropout(p=0.3),
             nn.ReLU(),
-            nn.Linear(embed_dim, embed_dim)
+            nn.Linear(512, embed_dim)
         )
 
     def forward(self, x):
@@ -194,7 +198,7 @@ def triplet_loss(anchor, positive, negative, margin=0.3):
     return loss.mean()
 
 def hard_negative_mining(embeddings, labels, margin=0.3):
-    """In‑batch hard negative mining."""
+    """In batch hard negative mining."""
     N = embeddings.size(0)
     distances = torch.cdist(embeddings, embeddings, p=2)  # (N, N)
 
@@ -261,35 +265,35 @@ def evaluate_recall(model, dataloader, device, k=[1,5], save_embeddings_path=Non
 
     return recalls
 
+
 def tsne_visualization(embeddings, labels, title, save_path):
-    tsne = TSNE(n_components=2, perplexity=30, random_state=SEED)
+    # Fixed parameters for high-quality clustering visuals
+    tsne = TSNE(n_components=2, perplexity=45, n_iter=1000, init='pca', random_state=SEED)
     emb_2d = tsne.fit_transform(embeddings.numpy())
-    plt.figure(figsize=(10,8))
-    scatter = plt.scatter(emb_2d[:,0], emb_2d[:,1], c=labels, cmap='tab20', s=5)
+    plt.figure(figsize=(12, 10))
+    scatter = plt.scatter(emb_2d[:,0], emb_2d[:,1], c=labels, cmap='nipy_spectral', s=10, alpha=0.7)
     plt.title(title)
     plt.colorbar(scatter)
-    plt.savefig(save_path)
+    plt.axis('off')
+    plt.savefig(save_path, dpi=300)
     plt.close()
 
 def retrieval_visualization(query_images, retrieved_images, query_labels, retrieved_labels, save_path):
     fig, axes = plt.subplots(min(10, len(query_images)), 6, figsize=(15, 15))
     for i in range(min(10, len(query_images))):
-        # Query
         ax = axes[i, 0]
         ax.imshow(query_images[i])
-        ax.set_title(f"Query: {query_labels[i]}")
+        ax.set_title(f"Q: {query_labels[i]}", fontsize=8)
         ax.axis('off')
-        # Retrieved
         for j in range(5):
             ax = axes[i, j+1]
             ax.imshow(retrieved_images[i][j])
             color = 'green' if retrieved_labels[i][j] == query_labels[i] else 'red'
-            ax.set_title(f"{retrieved_labels[i][j]}", color=color)
+            ax.set_title(f"{retrieved_labels[i][j]}", color=color, fontsize=8)
             ax.axis('off')
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
-
 # ------------------------------
 # Main
 # ------------------------------
@@ -349,38 +353,46 @@ def main():
 
     # ---------- Prepare data loaders for each experiment ----------
     def get_loaders(exp_name):
+        train_loader = val_loader = test_loader = test_img_loader = None
         if exp_name == 'contrastive':
             train_dataset = ContrastiveDataset(train_list, transform=train_transform)
             val_dataset   = ContrastiveDataset(val_list, transform=val_transform)
             test_dataset  = ContrastiveDataset(test_list, transform=val_transform)
+
             # For evaluation, we also need image+label loaders
             test_img_dataset = ImageDataset(test_list, transform=val_transform)
-            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-            val_loader   = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-            test_loader  = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-            test_img_loader = DataLoader(test_img_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
+            val_loader   = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
+            test_loader  = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
+            test_img_loader = DataLoader(test_img_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
             return train_loader, val_loader, test_loader, test_img_loader
+
         elif exp_name == 'triplet_random':
             train_dataset = TripletDataset(train_list, transform=train_transform)
             val_dataset   = TripletDataset(val_list, transform=val_transform)
             test_dataset  = TripletDataset(test_list, transform=val_transform)
             test_img_dataset = ImageDataset(test_list, transform=val_transform)
-            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-            val_loader   = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-            test_loader  = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-            test_img_loader = DataLoader(test_img_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+
+            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
+            val_loader   = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
+            test_loader  = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
+            test_img_loader = DataLoader(test_img_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
             return train_loader, val_loader, test_loader, test_img_loader
+
         elif exp_name == 'triplet_hard':
             # For hard mining we need standard image+label loaders
             train_img_dataset = ImageDataset(train_list, transform=train_transform)
             val_img_dataset   = ImageDataset(val_list, transform=val_transform)
             test_img_dataset  = ImageDataset(test_list, transform=val_transform)
-            train_loader = DataLoader(train_img_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-            val_loader   = DataLoader(val_img_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-            test_loader  = DataLoader(test_img_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-            return train_loader, val_loader, test_loader, test_img_dataset
+
+            train_loader = DataLoader(train_img_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
+            val_loader   = DataLoader(val_img_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
+            test_loader  = DataLoader(test_img_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
+            test_img_loader = DataLoader(test_img_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
+            return train_loader, val_loader, test_loader, test_img_loader
         else:
-            raise ValueError("Unknown experiment")
+            raise ValueError(f"Unknown experiment: {exp_name}")
+        return train_loader, val_loader, test_loader, test_img_loader
 
     # ---------- Run experiments ----------
     experiments = ['contrastive', 'triplet_random', 'triplet_hard'] if args.experiment == 'all' else [args.experiment]
@@ -389,7 +401,7 @@ def main():
         print(f"\n===== Starting experiment: {exp} =====")
         train_loader, val_loader, test_loader, test_img_loader = get_loaders(exp)
 
-        model = EmbeddingNet(embed_dim=256).to(device)
+        model = EmbeddingNet(embed_dim=128).to(device)
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
         best_recall = 0.0
@@ -446,11 +458,17 @@ def main():
 
             print(f"Epoch {epoch}: Loss = {avg_loss:.4f}, Recall@1 = {recall1:.4f}")
 
+            scheduler.step() # Update LR
+            avg_loss = total_loss / len(train_loader)
+            recalls = evaluate_recall(model, test_img_loader, device, k=[1])
+            r1 = recalls['Recall@1']
+            print(f"Epoch {epoch}: Loss {avg_loss:.4f}, Recall@1 {r1:.4f}")
+
             # Save best model
             if recall1 > best_recall:
                 best_recall = recall1
                 torch.save(model.state_dict(), os.path.join(args.output_dir, 'models', f'{exp}_best.pth'))
-                torch.save(model.state_dict(), "/content/drive/MyDrive/Bilal Bushra_MSDS25051/model.pth") 
+                torch.save(model.state_dict(), "/content/drive/MyDrive/Bilal Bushra_MSDS25051_03/model.pth") 
                 print(f"Best model saved with Recall@1 = {best_recall:.4f}")
 
         # After training, final evaluation with best model
