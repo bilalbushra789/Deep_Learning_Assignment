@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import random
+from collections import Counter
 
 # Standard ImageNet normalization
 mean = [0.485, 0.456, 0.406]
@@ -43,6 +44,11 @@ class ImageDataset(Dataset):
         if self.transform:
             image = self.transform(image)
         return image, label, img_path
+        
+        def get_class_distribution(self):
+            labels = [item[1] for item in self.data_list]
+        return Counter(labels)
+
 
 class ContrastiveDataset(Dataset):
     
@@ -60,6 +66,10 @@ class ContrastiveDataset(Dataset):
     def __len__(self):
         return len(self.data_list)   # number of pairs = number of images (each image used as anchor once)
 
+    def get_class_distribution(self):
+        labels = [item[1] for item in self.data_list]
+        return Counter(labels)
+      
     def __getitem__(self, idx):
         # Anchor image info
         anchor_path, anchor_label = self.data_list[idx]
@@ -88,8 +98,7 @@ class ContrastiveDataset(Dataset):
             img2 = self.transform(img2)
         return img1, img2, torch.tensor(target, dtype=torch.float32)
 
-    def _get_negative_pair(self, idx):
-        """Fallback to return a negative pair."""
+        #"""Fallback to return a negative pair."""
         anchor_path, anchor_label = self.data_list[idx]
         neg_label = random.choice([l for l in self.class_to_indices.keys() if l != anchor_label])
         neg_idx = random.choice(self.class_to_indices[neg_label])
@@ -100,6 +109,7 @@ class ContrastiveDataset(Dataset):
             img1 = self.transform(img1)
             img2 = self.transform(img2)
         return img1, img2, torch.tensor(0.0, dtype=torch.float32)
+
 
 class TripletDataset(Dataset):
     
@@ -115,6 +125,10 @@ class TripletDataset(Dataset):
 
     def __len__(self):
         return len(self.data_list)
+
+    def get_class_distribution(self):
+        labels = [item[1] for item in self.data_list]
+        return Counter(labels)
 
     def __getitem__(self, idx):
         anchor_path, anchor_label = self.data_list[idx]
@@ -138,3 +152,5 @@ class TripletDataset(Dataset):
             img_p = self.transform(img_p)
             img_n = self.transform(img_n)
         return img_a, img_p, img_n
+
+        
