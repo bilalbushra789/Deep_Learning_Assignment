@@ -26,12 +26,6 @@ def show_retrieval(query_idx, embeddings, images, labels, class_names, k=5, save
     
     #Display query image and top-k retrieved images.
     # query_idx: index of query image in the dataset.
-    # embeddings: (N, emb_dim) tensor.
-    # images: list of PIL Images or numpy arrays corresponding to indices.
-    # labels: list/array of class labels for each image.
-    # class_names: dict mapping label -> class name string.
-    # k: number of neighbors to show.
-    # save_path: if provided, save figure to this path.
     
     embeddings = F.normalize(embeddings, p=2, dim=1)
     dist = torch.cdist(embeddings[query_idx:query_idx+1], embeddings).squeeze()
@@ -99,3 +93,7 @@ def plot_tsne(embeddings, labels, class_names=None, title='t-SNE', save_path=Non
     if save_path:
         plt.savefig(save_path, bbox_inches='tight')
     plt.show()
+if __name__ == '__main__':
+    print("recall@1 =", recall_at_k(torch.randn(100,128), torch.randint(0,10,(100,)), k=1))
+    print("t-SNE plot test: call plot_tsne(emb, lbl, names)")
+    print("Retrieval test: call show_retrieval(0, emb, images, labels, class_names)")
