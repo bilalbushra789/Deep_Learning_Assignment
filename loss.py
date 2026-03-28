@@ -51,6 +51,10 @@ def batch_hard_mining(embeddings, labels, margin=0.2):
 
         loss = F.relu(pos_dist - neg_dist + margin)
         losses.append(loss)
+        # Fix: add large penalty to same class distances, then take min
+        neg_dist = (dist_matrix[i] + 1e6 * (labels == labels[i]).float()).min()
+        loss = F.relu(pos_dist - neg_dist + margin)
+        losses.append(loss)
 
     if len(losses) == 0:
         return torch.tensor(0.0, device=embeddings.device)

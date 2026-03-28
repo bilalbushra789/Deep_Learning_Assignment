@@ -47,3 +47,4 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=str, default='embedding.npy', help='Output .npy file')
     args = parser.parse_args()
     main(args)
+    print("Inference completed.")
