@@ -156,6 +156,38 @@ def main(args):
     plt.legend()
     plt.savefig(os.path.join(args.save_dir, f'train_loss_{args.loss}.png'))
     plt.close()
+    def plot_training_curves(loss_name, epochs, losses, recalls1, recalls5, save_dir):
+    
+     os.makedirs(save_dir, exist_ok=True)
+
+    plt.figure(figsize=(14,5))
+
+    #  Loss Plot
+    plt.subplot(1,2,1)
+    plt.plot(epochs, losses, marker='o', linewidth=2, label='Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title(f'Loss Curve - {loss_name}')
+    plt.grid(True)
+    plt.legend()
+
+    #  Recall Plot
+    plt.subplot(1,2,2)
+    plt.plot(epochs, recalls1, marker='s', linewidth=2, label='Recall@1')
+    plt.plot(epochs, recalls5, marker='^', linewidth=2, label='Recall@5')
+    plt.xlabel('Epoch')
+    plt.ylabel('Recall')
+    plt.title(f'Recall Curve - {loss_name}')
+    plt.legend()
+    plt.grid(True)
+
+    #  Save properly
+    save_path = os.path.join(save_dir, f'curves_{loss_name}.png')
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+
+    print(f"Saved: {save_path}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
