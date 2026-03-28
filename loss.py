@@ -42,7 +42,7 @@ def batch_hard_mining(embeddings, labels, margin=0.2):
             continue   # no positive in batch
         
         # Hardest positive: maximum distance among same class
-        pos_dist = (dist_matrix[i] * same_class).max()
+        pos_dist = dist_matrix[i] [same_class.bool()].max()
 
         # Mask for different class
         diff_class = 1 - (labels == labels[i]).float()
