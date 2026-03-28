@@ -60,3 +60,5 @@ def batch_hard_mining(embeddings, labels, margin=0.2):
         return torch.tensor(0.0, device=embeddings.device)
     
     return torch.stack(losses).mean()
+if __name__ == "__main__":
+    print("Loss functions loaded successfully.")
