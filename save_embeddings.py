@@ -19,6 +19,16 @@ def compute_embeddings(model, dataloader, device):
             labels.append(lbls)
     return torch.cat(embeddings, dim=0), torch.cat(labels, dim=0)
 
+import torch.nn.functional as F
+
+def compute_recall(embeddings, labels, k=5):
+    """Compute Recall@K using cosine similarity."""
+    embeddings = F.normalize(embeddings, p=2, dim=1)
+    sim = embeddings @ embeddings.T
+    sim.fill_diagonal_(-float('inf'))
+    _, topk_idx = sim.topk(k, dim=1)
+    correct = (labels[topk_idx] == labels.unsqueeze(1)).any(dim=1)
+    return correct.float().mean().item()
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Load model
