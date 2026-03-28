@@ -172,7 +172,7 @@ class EmbeddingNet(nn.Module):
         self.projection = nn.Sequential(
             nn.Linear(in_features, 512),
             nn.LayerNorm(512),
-            nn.Dropout(p=0.3),
+            nn.Dropout(p=0.1),
             nn.ReLU(),
             nn.Linear(512, embed_dim)
         )
@@ -264,33 +264,72 @@ def evaluate_recall(model, dataloader, device, k=[1,5], save_embeddings_path=Non
         torch.save({'embeddings': all_embeddings, 'labels': all_labels}, save_embeddings_path)
 
     return recalls
-
-
+#-------TSNE-------------
 def tsne_visualization(embeddings, labels, title, save_path):
-    # Fixed parameters for high-quality clustering visuals
-    tsne = TSNE(n_components=2, perplexity=45, n_iter=1000, init='pca', random_state=SEED)
+    tsne = TSNE(n_components=2, perplexity=30, n_iter=1000, random_state=SEED)
     emb_2d = tsne.fit_transform(embeddings.numpy())
-    plt.figure(figsize=(12, 10))
-    scatter = plt.scatter(emb_2d[:,0], emb_2d[:,1], c=labels, cmap='nipy_spectral', s=10, alpha=0.7)
-    plt.title(title)
+
+    plt.figure(figsize=(10, 8))
+    scatter = plt.scatter(emb_2d[:, 0], emb_2d[:, 1], c=labels, cmap='tab20', s=10)
     plt.colorbar(scatter)
-    plt.axis('off')
-    plt.savefig(save_path, dpi=300)
+    plt.title(title)
+    plt.savefig(save_path)
+    plt.close()
+
+
+
+def plot_training_curves(exp_name, epochs_list, losses, recalls1, recalls5, output_dir):
+    plt.figure(figsize=(15, 6))
+    
+    # ------------------ Loss Plot ------------------
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs_list, losses, marker='o', color='b', label='Loss')
+    plt.title(f'Loss: {exp_name}')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.grid(True)
+    plt.legend()
+    
+    # ------------------ Recall Plot ------------------
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs_list, recalls1, marker='s', color='g', label='R@1')
+    plt.plot(epochs_list, recalls5, marker='^', color='r', label='R@5')
+    plt.title(f'Recall: {exp_name}')
+    plt.xlabel('Epochs')
+    plt.ylabel('Recall')
+    plt.legend()
+    plt.grid(True)
+    
+    # ------------------ Save Plot ------------------
+    save_path = os.path.join(output_dir, 'plots')
+    os.makedirs(save_path, exist_ok=True)
+    
+    plt.savefig(os.path.join(save_path, f'curves_{exp_name}.png'))
     plt.close()
 
 def retrieval_visualization(query_images, retrieved_images, query_labels, retrieved_labels, save_path):
-    fig, axes = plt.subplots(min(10, len(query_images)), 6, figsize=(15, 15))
-    for i in range(min(10, len(query_images))):
-        ax = axes[i, 0]
-        ax.imshow(query_images[i])
-        ax.set_title(f"Q: {query_labels[i]}", fontsize=8)
-        ax.axis('off')
-        for j in range(5):
-            ax = axes[i, j+1]
-            ax.imshow(retrieved_images[i][j])
-            color = 'green' if retrieved_labels[i][j] == query_labels[i] else 'red'
-            ax.set_title(f"{retrieved_labels[i][j]}", color=color, fontsize=8)
-            ax.axis('off')
+    n_queries = len(query_images)
+    if n_queries == 0:
+        return
+
+    k = len(retrieved_images[0])
+
+    plt.figure(figsize=(2*(k+1), 2*n_queries))
+
+    for i in range(n_queries):
+        # Query image
+        plt.subplot(n_queries, k+1, i*(k+1) + 1)
+        plt.imshow(query_images[i])
+        plt.title(f"Q: {str(query_labels[i])}", fontsize=8)
+        plt.axis('off')
+
+        # Retrieved images
+        for j in range(k):
+            plt.subplot(n_queries, k+1, i*(k+1) + j + 2)
+            plt.imshow(retrieved_images[i][j])
+            plt.title(str(retrieved_labels[i][j]), fontsize=8)
+            plt.axis('off')
+
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
@@ -335,7 +374,7 @@ def main():
 
     # ---------- Inference mode ----------
     if args.inference:
-        model = EmbeddingNet(embed_dim=256).to(device)
+        model = EmbeddingNet(embed_dim=128).to(device)
         # Load a pre-trained model (choose which experiment's best model)
         model_path = os.path.join(args.output_dir, 'models', 'contrastive_best.pth')
         if not os.path.exists(model_path):
@@ -398,6 +437,7 @@ def main():
     experiments = ['contrastive', 'triplet_random', 'triplet_hard'] if args.experiment == 'all' else [args.experiment]
 
     for exp in experiments:
+        epoch_losses, epoch_r1, epoch_r5, epochs_list = [], [], [], []
         print(f"\n===== Starting experiment: {exp} =====")
         train_loader, val_loader, test_loader, test_img_loader = get_loaders(exp)
 
@@ -408,7 +448,7 @@ def main():
         csv_path = os.path.join(args.output_dir, f'training_log_{exp}.csv')
         with open(csv_path, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['epoch', 'loss', 'Recall@1'])
+            writer.writerow(['epoch', 'loss', 'Recall1', 'Recall5'])
 
         for epoch in range(1, args.epochs+1):
             model.train()
@@ -449,24 +489,25 @@ def main():
 
             # Evaluate on test set
             recalls = evaluate_recall(model, test_img_loader, device, k=[1,5])
-            recall1 = recalls['Recall@1']
+            r1 = recalls['Recall@1']
+            r5 = recalls['Recall@5']
+
+            # ----------- Store Training Metrics -----------
+            epochs_list.append(epoch)
+            epoch_losses.append(avg_loss)
+            epoch_r1.append(r1)
+            epoch_r5.append(r5)
 
             # Log to CSV
+            
             with open(csv_path, 'a', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow([epoch, avg_loss, recall1])
-
-            print(f"Epoch {epoch}: Loss = {avg_loss:.4f}, Recall@1 = {recall1:.4f}")
-
-            scheduler.step() # Update LR
-            avg_loss = total_loss / len(train_loader)
-            recalls = evaluate_recall(model, test_img_loader, device, k=[1])
-            r1 = recalls['Recall@1']
-            print(f"Epoch {epoch}: Loss {avg_loss:.4f}, Recall@1 {r1:.4f}")
+                writer.writerow([ epoch, avg_loss, r1 , r5])
+            print(f"Epoch {epoch}: Loss = {avg_loss:.4f}, Recall@1 = {r1:.4f}, Recall@5 = {r5:.4f}")
 
             # Save best model
-            if recall1 > best_recall:
-                best_recall = recall1
+            if r1 > best_recall:
+                best_recall = r1
                 torch.save(model.state_dict(), os.path.join(args.output_dir, 'models', f'{exp}_best.pth'))
                 torch.save(model.state_dict(), "/content/drive/MyDrive/Bilal Bushra_MSDS25051_03/model.pth") 
                 print(f"Best model saved with Recall@1 = {best_recall:.4f}")
@@ -490,6 +531,7 @@ def main():
 
         # Retrieval visualization (requires images)
         # We'll use test_img_loader (already has images)
+                # Retrieval visualization
         model.eval()
         all_emb = []
         all_paths = []
@@ -503,33 +545,58 @@ def main():
                 all_paths.extend(paths)
         all_emb = torch.cat(all_emb, dim=0)
         all_labels = torch.cat(all_labels, dim=0)
-        sim = all_emb @ all_emb.T
 
-        # Select 10 random queries
-        query_indices = np.random.choice(len(all_emb), 10, replace=False)
+        # Similarity on CPU (safe)
+        sim = (all_emb @ all_emb.T).cpu()
+
+        # Select queries
+        num_queries = min(10, len(all_emb))
+        query_indices = np.random.choice(len(all_emb), num_queries, replace=False)
+
         query_images = []
         query_labels = []
         retrieved_images = []
         retrieved_labels = []
+
         for qi in query_indices:
-            sim_row = sim[qi]
+            sim_row = sim[qi].clone()
             sim_row[qi] = -float('inf')
+
             top5_idx = sim_row.topk(5).indices
-            # Load images from paths
-            query_img = Image.open(all_paths[qi]).convert('RGB')
-            query_images.append(query_img)
-            query_labels.append(full_dataset.classes[all_labels[qi].item()])
+
+            # Query
+            q_label_idx = all_labels[qi].item()
+            query_images.append(Image.open(all_paths[qi]).convert('RGB'))
+            query_labels.append(full_dataset.classes[q_label_idx])
+
+            # Retrieved
             ret_imgs = []
             ret_lbls = []
             for ti in top5_idx:
                 ret_imgs.append(Image.open(all_paths[ti]).convert('RGB'))
-                ret_lbls.append(full_dataset.classes[all_labels[ti].item()])
+                t_label_idx = all_labels[ti].item()
+                ret_lbls.append(full_dataset.classes[t_label_idx])
+
             retrieved_images.append(ret_imgs)
             retrieved_labels.append(ret_lbls)
 
-        retrieval_visualization(query_images, retrieved_images, query_labels, retrieved_labels,
-                                os.path.join(args.output_dir, 'plots', f'retrieval_{exp}.png'))
-
+        plot_training_curves(
+            exp_name=exp,
+            epochs_list=epochs_list,          
+            losses=epoch_losses,
+            recalls1=epoch_r1,
+            recalls5=epoch_r5,
+            output_dir=args.output_dir
+        )
+        # Visualization
+        retrieval_visualization(
+            query_images,
+            retrieved_images,
+            query_labels,
+            retrieved_labels,
+            os.path.join(args.output_dir, 'plots', f'retrieval_{exp}.png')
+        )
+        
     print("\nAll experiments completed.")
 
 if __name__ == "__main__":
