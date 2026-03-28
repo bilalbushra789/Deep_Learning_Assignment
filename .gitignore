@@ -17,3 +17,7 @@ venv/
 # Ignore system files
 .DS_Store
 Thumbs.db
+
+#Ignore any other temporary files
+*.tmp
+*.bak
