@@ -22,3 +22,9 @@ class EmbeddingNet(nn.Module):
         x = self.projection(x)          # (batch, embedding_dim)
         x = F.normalize(x, p=2, dim=1)  # L2 normalize
         return x
+        
+if __name__ == '__main__':
+    model = EmbeddingNet(dim=128)
+    x = torch.randn(2, 3, 224, 224)
+    out = model(x)
+    print(f"Output shape: {out.shape} (should be [2,128])")
