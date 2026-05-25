@@ -6,9 +6,16 @@ from dataset import val_transform
 import numpy as np
 
 def load_model(checkpoint_path, device):
-    model = EmbeddingNet(embedding_dim=128).to(device)
+    model = EmbeddingNet().to(device)
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    
+    state_dict = checkpoint.get('model_state_dict', checkpoint)
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        name = k.replace('backbone.', 'backbone.resnet.') if 'backbone.' in k and 'resnet' not in k else k
+        new_state_dict[name] = v
+        
+    model.load_state_dict(new_state_dict, strict=False)
     model.eval()
     return model
 

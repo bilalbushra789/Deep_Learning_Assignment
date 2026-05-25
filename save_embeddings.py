@@ -19,7 +19,6 @@ def compute_embeddings(model, dataloader, device):
             labels.append(lbls)
     return torch.cat(embeddings, dim=0), torch.cat(labels, dim=0)
 
-import torch.nn.functional as F
 
 def compute_recall(embeddings, labels, k=5):
     """Compute Recall@K using cosine similarity."""
